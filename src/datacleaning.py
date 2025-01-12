@@ -1,92 +1,85 @@
 import pandas as pd
 import os
 
-# Load the dataset
-file_path = './src/Data_Cortex_Nuclear.csv'
-data = pd.read_csv(file_path)
+def load_data(file_path):
+    """Load the dataset from the specified file path."""
+    return pd.read_csv(file_path)
 
-# Step 1: Initial data inspection
-print("Data Overview:")
+def inspect_data(data):
+    """Provide an overview of the dataset."""
+    print("Data Overview:")
+    print(f"Number of rows: {data.shape[0]}")
+    print(f"Number of columns: {data.shape[1]}")
+    print("Data types and missing values per column:")
+    print(data.dtypes)
+    print(data.isnull().sum())
+    print("Statistical summary of numeric columns:")
+    print(data.describe())
 
-# Display basic information about the dataset
-print(f"Number of rows: {data.shape[0]}")
-print(f"Number of columns: {data.shape[1]}")
+def drop_columns_with_many_missing(data, threshold=0.2):
+    """Drop columns with more than the specified threshold of missing values."""
+    missing_values = data.isnull().sum()
+    columns_to_drop = missing_values[missing_values > len(data) * threshold].index
+    print("Columns with more than 20% missing values (to be dropped):")
+    print(columns_to_drop)
+    return data.drop(columns=columns_to_drop)
 
-# Display data types and missing values
-print("Data types and missing values per column:")
-print(data.dtypes)
-print(data.isnull().sum())
+def fill_missing_values(data, columns):
+    """Fill missing values in specified columns with their mean."""
+    for column in columns:
+        if data[column].isnull().sum() > 0:
+            data[column] = data[column].fillna(data[column].mean())
+    return data
 
-# Display statistical summary of numeric columns
-print("Statistical summary of numeric columns:")
-print(data.describe())
-
-# Step 2: Check for missing values
-# Identify columns with more than 20% missing values
-missing_values = data.isnull().sum()
-columns_with_many_missing = missing_values[missing_values > len(data) * 0.2].index
-print("Columns with more than 20% missing values (to be dropped):")
-print(columns_with_many_missing)
-
-# Drop columns with more than 20% missing values
-# This ensures the dataset is manageable and focused on reliable data
-data_cleaned = data.drop(columns=columns_with_many_missing)
-
-# Step 3: Fill missing values for relevant columns
-# Filling missing values in selected columns with the mean
-for column in ['BDNF_N', 'pCREB_N']:
-    if data_cleaned[column].isnull().sum() > 0:
-        data_cleaned[column] = data_cleaned[column].fillna(data_cleaned[column].mean())
-
-# Verify there are no more missing values in the relevant columns
-print("Missing values after filling in relevant columns:")
-print(data_cleaned[['BDNF_N', 'pCREB_N']].isnull().sum())
-
-# Step 4: Detect and handle outliers
-# Function to detect outliers based on the 1.5*IQR rule
-def detect_outliers(df, column):
-    Q1 = df[column].quantile(0.25)
-    Q3 = df[column].quantile(0.75)
+def detect_outliers(data, column):
+    """Detect outliers in a specified column based on the 1.5*IQR rule."""
+    Q1 = data[column].quantile(0.25)
+    Q3 = data[column].quantile(0.75)
     IQR = Q3 - Q1
     lower_bound = Q1 - 1.5 * IQR
     upper_bound = Q3 + 1.5 * IQR
-    return df[(df[column] < lower_bound) | (df[column] > upper_bound)]
+    return data[(data[column] < lower_bound) | (data[column] > upper_bound)]
 
-# Detect outliers in BDNF_N and pCREB_N
-outliers_BDNF = detect_outliers(data_cleaned, 'BDNF_N')
-outliers_pCREB = detect_outliers(data_cleaned, 'pCREB_N')
+def remove_outliers(data, columns):
+    """Remove outliers from specified columns."""
+    for column in columns:
+        outliers = detect_outliers(data, column)
+        data = data[~data.index.isin(outliers.index)]
+    return data
 
-print("Number of outliers in BDNF_N:", len(outliers_BDNF))
-print("Number of outliers in pCREB_N:", len(outliers_pCREB))
+def save_cleaned_data(data, file_path):
+    """Save the cleaned dataset to the specified path."""
+    if os.path.exists(file_path):
+        print(f"File already exists at: {file_path}. No new file created.")
+    else:
+        data.to_csv(file_path, index=False)
+        print(f"Cleaned and relevant data saved to: {file_path}")
 
-# Optionally remove outliers
-# Outliers are removed to ensure the analysis is not skewed
-data_cleaned = data_cleaned[~data_cleaned.index.isin(outliers_BDNF.index)]
-data_cleaned = data_cleaned[~data_cleaned.index.isin(outliers_pCREB.index)]
+def main():
+    file_path = './src/Data_Cortex_Nuclear.csv'
+    cleaned_data_path = './src/cleaned_relevant_data.csv'
 
-# Step 5: Final cleaning validation
-# Verify there are no missing values or extreme outliers left
-print("Missing values after cleaning:")
-print(data_cleaned.isnull().sum())
+    # Load the dataset
+    data = load_data(file_path)
 
-# Display cleaned data overview
-print("Cleaned data overview:")
-print(data_cleaned.describe())
+    # Step 1: Inspect the data
+    inspect_data(data)
 
-# Step 6: Create a new focused dataset
-# Select only relevant columns for the research questions
-relevant_columns = ['MouseID', 'Genotype', 'Treatment', 'BDNF_N', 'pCREB_N']
-filtered_data = data_cleaned[relevant_columns]
+    # Step 2: Drop columns with many missing values
+    data_cleaned = drop_columns_with_many_missing(data)
 
-# Define the path to save the cleaned data within the src directory
-cleaned_data_path = './src/cleaned_relevant_data.csv'
+    # Step 3: Fill missing values for relevant columns
+    data_cleaned = fill_missing_values(data_cleaned, ['BDNF_N', 'pCREB_N'])
 
-# Check if the file already exists
-if os.path.exists(cleaned_data_path):
-    print(f"File already exists at: {cleaned_data_path}. No new file created.")
-else:
-    # Save the cleaned and filtered dataset to the specified path
-    filtered_data.to_csv(cleaned_data_path, index=False)
-    print(f"Cleaned and relevant data saved to: {cleaned_data_path}")
+    # Step 4: Remove outliers
+    data_cleaned = remove_outliers(data_cleaned, ['BDNF_N', 'pCREB_N'])
 
+    # Step 5: Create a new focused dataset
+    relevant_columns = ['MouseID', 'Genotype', 'Treatment', 'BDNF_N', 'pCREB_N']
+    filtered_data = data_cleaned[relevant_columns]
 
+    # Step 6: Save the cleaned and filtered dataset
+    save_cleaned_data(filtered_data, cleaned_data_path)
+
+if __name__ == "__main__":
+    main()
